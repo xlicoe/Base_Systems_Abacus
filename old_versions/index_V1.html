@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Base Systems Interactive Abacus</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f1f5f9;
+        }
+
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .abacus-rod {
+            width: 4px;
+            background: linear-gradient(to bottom, #475569, #1e293b, #475569);
+            border-radius: 2px;
+            position: absolute;
+            top: -10px;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 0;
+        }
+
+        .bead {
+            position: relative;
+            z-index: 10;
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), 
+                        background-color 0.3s ease,
+                        box-shadow 0.3s ease,
+                        opacity 0.3s ease;
+            cursor: pointer;
+            box-shadow: inset 0 2px 4px rgba(255,255,255,0.2), 0 4px 6px rgba(0,0,0,0.4);
+            margin-bottom: 2px;
+        }
+
+        /* Base-specific bead styling */
+        .bead-2 { width: 38px; height: 18px; border-radius: 9px; background: #0891b2; border: 1px solid #164e63; }
+        .bead-10 { width: 30px; height: 12px; border-radius: 6px; background: #d97706; border: 1px solid #78350f; }
+        .bead-16 { width: 30px; height: 12px; border-radius: 6px; background: #7c3aed; border: 1px solid #4c1d95; }
+
+        /* Active states */
+        .bead-active.bead-2 { background: #22d3ee; box-shadow: 0 0 15px rgba(34, 211, 238, 0.5), inset 0 2px 4px rgba(255,255,255,0.4); }
+        .bead-active.bead-10 { background: #fbbf24; box-shadow: 0 0 15px rgba(251, 191, 36, 0.5), inset 0 2px 4px rgba(255,255,255,0.4); }
+        .bead-active.bead-16 { background: #a78bfa; box-shadow: 0 0 15px rgba(167, 139, 250, 0.5), inset 0 2px 4px rgba(255,255,255,0.4); }
+
+        /* Slow Floating Carry Indicator */
+        .carry-tag {
+            position: absolute;
+            top: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #0f172a;
+            font-weight: 900;
+            font-size: 12px;
+            padding: 4px 12px;
+            border-radius: 8px;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 100;
+            animation: slow-float-up 5s ease-out forwards;
+        }
+
+        .tag-2 { background: #22d3ee; box-shadow: 0 4px 15px rgba(34, 211, 238, 0.4); }
+        .tag-10 { background: #fbbf24; box-shadow: 0 4px 15px rgba(251, 191, 36, 0.4); }
+        .tag-16 { background: #a78bfa; box-shadow: 0 4px 15px rgba(167, 139, 250, 0.4); }
+
+        @keyframes slow-float-up {
+            0% { opacity: 0; transform: translate(-50%, 10px) scale(0.8); }
+            10% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+            80% { opacity: 1; transform: translate(-50%, -120px) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -150px) scale(0.9); }
+        }
+
+        .base-input {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(71, 85, 105, 0.5);
+            transition: all 0.2s ease;
+        }
+        .base-input:focus {
+            outline: none;
+            border-color: currentColor;
+            box-shadow: 0 0 0 2px rgba(255,255,255,0.05);
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+        .animate-shake { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+
+        .overflow-banner { opacity: 0; transform: translateY(10px); transition: all 0.3s ease; }
+        .overflow-visible { opacity: 1; transform: translateY(0); }
+
+        .decimal-side-display, .binary-side-display { transition: opacity 0.3s ease, transform 0.3s ease; }
+    </style>
+</head>
+<body class="p-4 md:p-8 min-h-screen">
+
+    <div class="max-w-6xl mx-auto">
+        <header class="mb-10 text-center">
+            <h1 class="text-4xl md:text-5xl font-extrabold mb-4 bg-cyan-400 bg-clip-text text-transparent">
+                Base Systems Interactive Abacus
+            </h1>
+            <p class="text-slate-400 max-w-2xl mx-auto text-lg">
+                Visualizing number systems through adding beads on the abacus. 
+            </p>
+            <p class="text-slate-400 max-w-2xl mx-auto text-lg">
+                 <strong>+Carry!</strong> indicators will show up when carrying happens.
+            </p>
+        </header>
+
+        <div class="grid grid-cols-1 gap-10">
+            
+            <!-- Base 10 (Decimal) -->
+            <div id="card-10" class="bg-slate-800/40 border border-slate-700/50 rounded-3xl p-8 shadow-2xl backdrop-blur-sm relative overflow-hidden">
+                <div id="overflow-10" class="overflow-banner absolute top-0 left-0 right-0 bg-red-500/20 border-b border-red-500/50 py-1 text-center text-red-400 text-xs font-bold uppercase tracking-widest pointer-events-none">
+                    ⚠️ Decimal Points Overflow
+                </div>
+                <div class="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-6 pt-4">
+                    <div>
+                        <h2 class="text-3xl font-black flex items-center gap-3 text-amber-500">
+                            DECIMAL <span class="text-xs font-medium px-2 py-1 bg-amber-500/10 rounded border border-amber-500/20 tracking-widest uppercase">Base 10</span>
+                        </h2>
+                        <p class="text-slate-500 text-sm mt-1">Digits: 0-9</p>
+                    </div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-2 rounded-2xl border border-slate-700">
+                        <button onclick="changeVal(10, -1)" class="w-12 h-12 flex items-center justify-center bg-slate-800 hover:bg-slate-700 rounded-xl transition-all active:scale-90 shadow-lg text-xl">-</button>
+                        <input type="number" id="display-10" 
+                            oninput="inputValue(10, this)"
+                            class="base-input mono text-3xl font-bold text-amber-500 w-40 text-center rounded-xl py-1" 
+                            value="0">
+                        <button onclick="changeVal(10, 1)" class="w-12 h-12 flex items-center justify-center bg-amber-600 hover:bg-amber-500 rounded-xl transition-all active:scale-90 shadow-lg shadow-amber-900/20 text-xl font-bold">+</button>
+                        <button onclick="resetVal(10)" class="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-300 uppercase tracking-widest">Reset</button>
+                    </div>
+                </div>
+                
+                <div class="overflow-hidden">
+                    <div id="abacus-10" class="flex flex-row-reverse justify-center gap-10 w-full p-6 min-h-[220px] relative"></div>
+                </div>
+            </div>
+
+            <!-- Base 2 (Binary) -->
+            <div id="card-2" class="bg-slate-800/40 border border-slate-700/50 rounded-3xl p-8 shadow-2xl backdrop-blur-sm relative overflow-hidden">
+                <div id="overflow-2" class="overflow-banner absolute top-0 left-0 right-0 bg-red-500/20 border-b border-red-500/50 py-1 text-center text-red-400 text-xs font-bold uppercase tracking-widest pointer-events-none">
+                    ⚠️ Binary Bits Overflow
+                </div>
+                <div class="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-6 pt-4">
+                    <div>
+                        <h2 class="text-3xl font-black flex items-center gap-3 text-cyan-400">
+                            BINARY <span class="text-xs font-medium px-2 py-1 bg-cyan-500/10 rounded border border-cyan-500/20 tracking-widest uppercase">Base 2</span>
+                        </h2>
+                        <p class="text-slate-500 text-sm mt-1">Digits: 0-1</p>
+                        <div class="flex flex-col gap-2 mt-2">
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-decimal-2" class="sr-only peer" onchange="toggleDecimal(2)">
+                                <div class="relative w-10 h-5 bg-slate-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-cyan-600 after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+                                <span class="ms-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Show Decimal Equivalent</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-2 rounded-2xl border border-slate-700">
+                        <button onclick="changeVal(2, -1)" class="w-12 h-12 flex items-center justify-center bg-slate-800 hover:bg-slate-700 rounded-xl transition-all active:scale-90 shadow-lg text-xl">-</button>
+                        <input type="text" id="display-2" 
+                            oninput="inputValue(2, this)"
+                            class="base-input mono text-3xl font-bold text-cyan-400 w-48 text-center rounded-xl py-1" 
+                            value="00000000"
+                            maxlength="8"
+                            spellcheck="false">
+                        <button onclick="changeVal(2, 1)" class="w-12 h-12 flex items-center justify-center bg-cyan-600 hover:bg-cyan-500 rounded-xl transition-all active:scale-90 shadow-lg shadow-cyan-900/20 text-xl font-bold">+</button>
+                        <button onclick="resetVal(2)" class="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-300 uppercase tracking-widest">Reset</button>
+                    </div>
+                </div>
+                
+                <div class="flex flex-row items-center gap-8 overflow-hidden px-2">
+                    <div id="decimal-side-container-2" class="decimal-side-display hidden shrink-0 flex-col items-center justify-center px-8 border-r border-slate-700/50">
+                         <div class="text-slate-500 text-[10px] uppercase font-bold tracking-widest mb-1">Decimal Equivalent</div>
+                         <div class="mono text-6xl font-black text-cyan-400 flex items-baseline">
+                             <span class="opacity-40">(</span>
+                             <span id="decimal-side-value-2">0</span>
+                             <span class="opacity-40">)</span>
+                             <sub class="text-2xl ml-1 text-cyan-600 font-bold opacity-80">10</sub>
+                         </div>
+                    </div>
+                    <div id="abacus-2" class="flex flex-row-reverse justify-center gap-6 flex-1 p-6 min-h-[180px]"></div>
+                </div>
+            </div>
+
+            <!-- Base 16 (Hexadecimal) -->
+            <div id="card-16" class="bg-slate-800/40 border border-slate-700/50 rounded-3xl p-8 shadow-2xl backdrop-blur-sm relative overflow-hidden">
+                <div id="overflow-16" class="overflow-banner absolute top-0 left-0 right-0 bg-red-500/20 border-b border-red-500/50 py-1 text-center text-red-400 text-xs font-bold uppercase tracking-widest pointer-events-none">
+                    ⚠️ Hexadecimal Digits Overflow
+                </div>
+                <div class="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-6 pt-4">
+                    <div>
+                        <h2 class="text-3xl font-black flex items-center gap-3 text-violet-500">
+                            HEXADECIMAL <span class="text-xs font-medium px-2 py-1 bg-violet-500/10 rounded border border-violet-500/20 tracking-widest uppercase">Base 16</span>
+                        </h2>
+                        <p class="text-slate-500 text-sm mt-1">Digits: 0-F</p>
+                        <div class="flex flex-col gap-3 mt-2">
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-decimal-16" class="sr-only peer" onchange="toggleDecimal(16)">
+                                <div class="relative w-10 h-5 bg-slate-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-violet-600 after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+                                <span class="ms-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Show Decimal Equivalent</span>
+                            </label>
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-binary-16" class="sr-only peer" onchange="toggleBinary(16)">
+                                <div class="relative w-10 h-5 bg-slate-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-cyan-600 after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+                                <span class="ms-3 text-xs font-bold text-slate-400 uppercase tracking-wider">Show Binary Equivalent</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4 bg-slate-900/50 p-2 rounded-2xl border border-slate-700">
+                        <button onclick="changeVal(16, -1)" class="w-12 h-12 flex items-center justify-center bg-slate-800 hover:bg-slate-700 rounded-xl transition-all active:scale-90 shadow-lg text-xl">-</button>
+                        <input type="text" id="display-16" 
+                            oninput="inputValue(16, this)"
+                            class="base-input mono text-3xl font-bold text-violet-500 w-40 text-center rounded-xl py-1" 
+                            value="0"
+                            spellcheck="false">
+                        <button onclick="changeVal(16, 1)" class="w-12 h-12 flex items-center justify-center bg-violet-600 hover:bg-violet-500 rounded-xl transition-all active:scale-90 shadow-lg shadow-violet-900/20 text-xl font-bold">+</button>
+                        <button onclick="resetVal(16)" class="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-300 uppercase tracking-widest">Reset</button>
+                    </div>
+                </div>
+                
+                <div class="flex flex-row items-center gap-8 overflow-hidden px-2">
+                    <div id="hex-side-column" class="flex flex-col gap-6 border-r border-slate-700/50 pr-8 hidden shrink-0">
+                        <div id="decimal-side-container-16" class="decimal-side-display hidden flex-col items-center justify-center">
+                             <div class="text-slate-500 text-[10px] uppercase font-bold tracking-widest mb-1">Decimal Equivalent</div>
+                             <div class="mono text-5xl font-black text-violet-400 flex items-baseline">
+                                 <span class="opacity-40">(</span>
+                                 <span id="decimal-side-value-16">0</span>
+                                 <span class="opacity-40">)</span>
+                                 <sub class="text-2xl ml-1 text-violet-600 font-bold opacity-80">10</sub>
+                             </div>
+                        </div>
+                        
+                        <div id="binary-side-container-16" class="binary-side-display hidden flex-col items-center justify-center">
+                             <div class="text-slate-500 text-[10px] uppercase font-bold tracking-widest mb-1">Binary Equivalent</div>
+                             <div class="mono text-3xl font-black text-cyan-400 flex items-baseline gap-2">
+                                 <span class="opacity-40">(</span>
+                                 <span id="binary-side-value-16" class="tracking-tight">0000 0000 0000</span>
+                                 <span class="opacity-40">)</span>
+                                 <sub class="text-xl text-cyan-600 font-bold opacity-80">2</sub>
+                             </div>
+                        </div>
+                    </div>
+
+                    <div id="abacus-16" class="flex flex-row-reverse justify-center gap-12 flex-1 p-6 min-h-[300px]"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const state = { 2: 0, 10: 0, 16: 0 };
+        const configs = {
+            2: { rods: 8, maxVal: 255, travel: 60, stagger: 30, beadH: 18, rodW: 16 },
+            10: { rods: 4, maxVal: 9999, travel: 60, stagger: 20, beadH: 12, rodW: 14 },
+            16: { rods: 3, maxVal: 4095, travel: 80, stagger: 15, beadH: 12, rodW: 14 }
+        };
+
+        function initAbacuses() {
+            Object.keys(configs).forEach(base => {
+                const container = document.getElementById(`abacus-${base}`);
+                container.innerHTML = '';
+                const baseInt = parseInt(base);
+                const conf = configs[base];
+                
+                for (let r = 0; r < conf.rods; r++) {
+                    const rodWrapper = document.createElement('div');
+                    rodWrapper.className = 'flex flex-col items-center group relative';
+                    rodWrapper.id = `rod-wrapper-${base}-${r}`;
+                    
+                    const valLabel = document.createElement('div');
+                    valLabel.className = 'text-3xl font-black mb-4 mono transition-colors duration-300';
+                    valLabel.id = `val-label-${base}-${r}`;
+                    valLabel.innerText = '0';
+
+                    const rodFrame = document.createElement('div');
+                    const frameHeight = (baseInt * (conf.beadH + 2)) + conf.travel;
+                    rodFrame.className = `relative flex flex-col-reverse items-center justify-start p-3 bg-slate-900/30 rounded-full border border-slate-700/30 shadow-inner`;
+                    rodFrame.style.height = `${frameHeight}px`;
+                    rodFrame.style.width = `${conf.rodW * 3}px`;
+                    
+                    const rodLine = document.createElement('div');
+                    rodLine.className = 'abacus-rod';
+                    rodFrame.appendChild(rodLine);
+
+                    for (let b = 0; b < (baseInt - 1); b++) {
+                        const bead = document.createElement('div');
+                        bead.className = `bead bead-${base}`;
+                        bead.id = `bead-${base}-${r}-${b}`;
+                        rodFrame.appendChild(bead);
+                    }
+
+                    const powerLabel = document.createElement('div');
+                    powerLabel.className = 'mt-4 text-sm font-bold text-slate-600 group-hover:text-slate-400 transition-colors uppercase tracking-widest';
+                    powerLabel.innerHTML = `${base}<sup>${r}</sup>`;
+
+                    rodWrapper.appendChild(valLabel);
+                    rodWrapper.appendChild(rodFrame);
+                    rodWrapper.appendChild(powerLabel);
+                    container.appendChild(rodWrapper);
+                }
+            });
+            updateAll();
+        }
+
+        function showCarryIndicator(base, rodIndex, text) {
+            const wrapper = document.getElementById(`rod-wrapper-${base}-${rodIndex}`);
+            if (!wrapper) return;
+            
+            const tag = document.createElement('div');
+            tag.className = `carry-tag tag-${base}`;
+            tag.innerText = text;
+            wrapper.appendChild(tag);
+            
+            setTimeout(() => tag.remove(), 5000);
+        }
+
+        function triggerOverflowEffect(base) {
+            const card = document.getElementById(`card-${base}`);
+            const banner = document.getElementById(`overflow-${base}`);
+            card.classList.remove('animate-shake');
+            void card.offsetWidth;
+            card.classList.add('animate-shake');
+            banner.classList.add('overflow-visible');
+            setTimeout(() => banner.classList.remove('overflow-visible'), 2000);
+        }
+
+        function changeVal(base, amount) {
+            const baseInt = parseInt(base);
+            const oldVal = state[base];
+            const newVal = oldVal + amount;
+            const conf = configs[base];
+
+            if (newVal > conf.maxVal) {
+                triggerOverflowEffect(base);
+                state[base] = 0;
+            } else if (newVal < 0) {
+                state[base] = conf.maxVal;
+            } else {
+                if (amount === 1) {
+                    for (let r = 0; r < conf.rods - 1; r++) {
+                        const digit = Math.floor(oldVal / Math.pow(baseInt, r)) % baseInt;
+                        if (digit === baseInt - 1) {
+                            const rippleDelay = r * 500; 
+                            setTimeout(() => {
+                                showCarryIndicator(base, r + 1, `+${baseInt} Carry!`);
+                            }, rippleDelay);
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                state[base] = newVal;
+            }
+            updateAbacus(base, true);
+        }
+
+        function inputValue(base, el) {
+            let val = parseInt(el.value, base);
+            if (!isNaN(val)) {
+                state[base] = Math.min(Math.max(0, val), configs[base].maxVal);
+                updateAbacus(base, false);
+            }
+        }
+
+        function resetVal(base) {
+            state[base] = 0;
+            updateAbacus(base, true);
+        }
+
+        function toggleDecimal(base) {
+            const el = document.getElementById(`decimal-side-container-${base}`);
+            if (el) {
+                el.classList.toggle('hidden');
+                el.classList.toggle('flex');
+            }
+            if (base === 16) updateHexColumnVisibility();
+        }
+
+        function toggleBinary(base) {
+            const el = document.getElementById(`binary-side-container-${base}`);
+            if (el) {
+                el.classList.toggle('hidden');
+                el.classList.toggle('flex');
+            }
+            if (base === 16) updateHexColumnVisibility();
+        }
+
+        function updateHexColumnVisibility() {
+            const col = document.getElementById('hex-side-column');
+            const dec = document.getElementById('decimal-side-container-16');
+            const bin = document.getElementById('binary-side-container-16');
+            
+            if (!dec.classList.contains('hidden') || !bin.classList.contains('hidden')) {
+                col.classList.remove('hidden');
+            } else {
+                col.classList.add('hidden');
+            }
+        }
+
+        function updateAbacus(base, updateInput) {
+            const val = state[base];
+            const baseInt = parseInt(base);
+            const conf = configs[base];
+            
+            if (updateInput) {
+                const input = document.getElementById(`display-${base}`);
+                if (input) {
+                    if (baseInt === 2) input.value = val.toString(2).padStart(8, '0');
+                    else input.value = baseInt === 16 ? val.toString(16).toUpperCase() : val;
+                }
+            }
+
+            if (baseInt === 2 || baseInt === 16) {
+                const side = document.getElementById(`decimal-side-value-${baseInt}`);
+                if (side) side.innerText = val;
+            }
+
+            if (baseInt === 16) {
+                const sideBin = document.getElementById(`binary-side-value-16`);
+                if (sideBin) {
+                    const binStr = val.toString(2).padStart(12, '0');
+                    sideBin.innerText = binStr.match(/.{1,4}/g).join(' ');
+                }
+            }
+
+            for (let r = 0; r < conf.rods; r++) {
+                const digit = Math.floor(val / Math.pow(baseInt, r)) % baseInt;
+                const label = document.getElementById(`val-label-${base}-${r}`);
+                if (label) {
+                    label.innerText = baseInt === 16 ? digit.toString(16).toUpperCase() : digit;
+                    let colorClass = 'text-slate-700';
+                    if (digit > 0) {
+                        if (baseInt === 10) colorClass = 'text-amber-400';
+                        else if (baseInt === 2) colorClass = 'text-cyan-400';
+                        else if (baseInt === 16) colorClass = 'text-violet-400';
+                    }
+                    label.className = `text-3xl font-black mb-4 mono transition-colors ${colorClass}`;
+                }
+
+                for (let b = 0; b < (baseInt - 1); b++) {
+                    const bead = document.getElementById(`bead-${base}-${r}-${b}`);
+                    if (!bead) continue;
+                    bead.style.transitionDelay = `${(baseInt - 2 - b) * conf.stagger}ms`;
+                    if (b > (baseInt - 2) - digit) {
+                        bead.classList.add('bead-active');
+                        bead.style.transform = `translateY(-${conf.travel}px)`;
+                    } else {
+                        bead.classList.remove('bead-active');
+                        bead.style.transform = `translateY(0)`;
+                    }
+                }
+            }
+        }
+
+        function updateAll() { Object.keys(state).forEach(b => updateAbacus(b, true)); }
+        window.onload = initAbacuses;
+    </script>
+</body>
+</html>
